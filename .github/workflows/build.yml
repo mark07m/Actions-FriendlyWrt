@@ -275,16 +275,10 @@ jobs:
         ./build.sh kernel
         case ${{ matrix.CPU }} in
         rk3588)
+            ../scripts/3rd/add_r8125.sh
             ../scripts/3rd/add_amneziawg.sh
             ;;
         esac
-
-        ## If you want to compile a driver from source, here is an example
-        # case ${{ matrix.CPU }} in
-        # rk3568)
-        #     ../scripts/3rd/add_r8125.sh
-        #     ;;
-        # esac
 
     - name: Build sd image
       id: build_sd_image
