@@ -1,4 +1,12 @@
 #!/bin/bash
+set -eu
+
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+AMNEZIA_VENDOR_DIR="${REPO_ROOT}/packages/amneziawg-openwrt"
+AMNEZIA_PACKAGE_DIR="friendlywrt/package/amneziawg"
+ROCKCHIP_EXTRA_CONFIG="configs/rockchip/99-codex-native-vpn"
+ROCKCHIP_DOCKER_EXTRA_CONFIG="configs/rockchip-docker/99-codex-docker"
+ROCKCHIP_DOCKER_SHARED_LINK="configs/rockchip-docker/99-codex-native-vpn"
 
 # {{ Add luci-app-diskman
 (cd friendlywrt && {
@@ -30,4 +38,25 @@ function init_theme() {
 }
 EOL
 sed -i -e '/boardname=/r /tmp/appendtext.txt' friendlywrt/target/linux/rockchip/armv8/base-files/root/setup.sh
+# }}
+
+# {{ Vendor native AmneziaWG packages directly into the FriendlyWrt tree.
+rm -rf "${AMNEZIA_PACKAGE_DIR}"
+mkdir -p "${AMNEZIA_PACKAGE_DIR}"
+rsync -a --delete "${AMNEZIA_VENDOR_DIR}/" "${AMNEZIA_PACKAGE_DIR}/"
+# }}
+
+# {{ Add config fragments for R6S extras.
+cat > "${ROCKCHIP_EXTRA_CONFIG}" <<'EOL'
+CONFIG_PACKAGE_kmod-r8125=y
+CONFIG_PACKAGE_amneziawg-tools=y
+CONFIG_PACKAGE_kmod-amneziawg=y
+CONFIG_PACKAGE_luci-proto-amneziawg=y
+EOL
+
+ln -sfn ../rockchip/99-codex-native-vpn "${ROCKCHIP_DOCKER_SHARED_LINK}"
+
+cat > "${ROCKCHIP_DOCKER_EXTRA_CONFIG}" <<'EOL'
+CONFIG_PACKAGE_docker=y
+EOL
 # }}
