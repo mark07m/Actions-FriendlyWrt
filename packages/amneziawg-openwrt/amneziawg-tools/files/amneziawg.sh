@@ -305,12 +305,8 @@ proto_amneziawg_setup() {
 
 proto_amneziawg_teardown() {
 	local config="$1"
-	proto_amneziawg_check_installed
-	if proto_amneziawg_is_kernel_mode; then
-		ip link del dev "${config}" >/dev/null 2>&1
-	else
-		rm -f "/var/run/amneziawg/${config}.sock"
-	fi
+	ip link del dev "${config}" >/dev/null 2>&1
+	rm -f "/var/run/wireguard/${config}.sock"
 }
 
 [ -n "$INCLUDE_ONLY" ] || {

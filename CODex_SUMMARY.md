@@ -3,107 +3,123 @@
 ## Changed files
 
 - `.github/workflows/build.yml`
-  - Added `workflow_dispatch` and a direct `push` trigger on `master`.
-  - Narrowed the workflow to the requested target only: FriendlyWrt `24.10`, `docker` set, `rk3588` image build.
-  - Changed the final image artifact name to `NanoPi-R6S-FriendlyWrt-24.10-docker.img.gz`.
-  - Switched release outputs to `GITHUB_OUTPUT` and made release tags unique per run.
+  - The rootfs stage now initializes from `rk3588.xml` instead of `rk3399.xml`.
+  - The rootfs stage now sources `device/friendlyelec/rk3588/rk3588_docker.mk` so the package/rootfs layout matches the NanoPi R6S image pipeline.
+  - The image stage now runs `scripts/3rd/add_amneziawg.sh` after `./build.sh kernel` so `amneziawg.ko` is compiled against the real FriendlyARM RK3588 vendor kernel.
 
 - `scripts/add_packages.sh`
-  - Keeps the existing FriendlyWrt custom additions.
-  - Vendors the native AmneziaWG packages from this repo into the upstream FriendlyWrt tree during CI.
-  - Adds config fragments that explicitly select:
-    - `docker`
-    - `kmod-r8125`
-    - `amneziawg-tools`
-    - `kmod-amneziawg`
-    - `luci-proto-amneziawg`
-  - Reuses the upstream FriendlyWrt Docker config for:
-    - `dockerd`
-    - `docker-compose`
-    - `luci-app-dockerman`
-  - `kmod-wireguard` is already selected upstream in `configs/rockchip/01-nanopi`, so it was left in the existing mechanism.
+  - Still vendors `amneziawg-tools` and `luci-proto-amneziawg` into the FriendlyWrt tree.
+  - No longer selects OpenWrt-side `kmod-amneziawg` or duplicate `kmod-r8125` in the rootfs stage, because those would be built for the OpenWrt `6.6.110` kernel instead of the runtime NanoPi R6S kernel.
 
-- `scripts/custome_config.sh`
-  - Keeps the existing SDK/toolchain cleanup.
-  - Changes the rockchip default LAN IP source from `192.168.2.1` to `192.168.8.1`.
-  - Updates the FriendlyWrt LuCI reconnect patch path so reset/reconnect logic matches `192.168.8.1`.
+- `scripts/3rd/add_amneziawg.sh`
+  - New script.
+  - Builds `amneziawg.ko` from the vendored AmneziaWG patch set against the actual `project/kernel` tree used by the NanoPi R6S image stage.
+  - Copies the module into `out/output_*_kmodules/lib/modules/$(kernelrelease)/`.
+  - Runs `depmod -b` on the staged kmodules tree so runtime module indexes are refreshed for the same kernel release.
 
-- `packages/amneziawg-openwrt/amneziawg-tools/*`
-- `packages/amneziawg-openwrt/kmod-amneziawg/*`
-- `packages/amneziawg-openwrt/luci-proto-amneziawg/*`
-  - Vendored native AmneziaWG packages so the build does not depend on a live custom feed during GitHub Actions.
+- `packages/amneziawg-openwrt/amneziawg-tools/files/amneziawg.sh`
+  - Removes the broken `proto_amneziawg_check_installed` teardown call.
+  - Makes teardown clean up the same `/var/run/wireguard/${config}.sock` path used by setup.
+  - Stops teardown from aborting interface bring-up on a missing helper function.
 
-## AmneziaWG integration
-
-- Source repo: `https://github.com/amnezia-vpn/amneziawg-openwrt`
-- Vendored commit: `56bf9fed93df48d2b747edd6e7a7c5fbe2b01afe`
-- Integration method: vendored package directories copied into `friendlywrt/package/amneziawg/` during CI.
-- Included packages:
-  - `amneziawg-tools`
-  - `kmod-amneziawg`
-  - `luci-proto-amneziawg`
-
-## Pinned / patched items
+- `packages/amneziawg-openwrt/amneziawg-tools/Makefile`
+  - `PKG_RELEASE` bumped to `2` for the netifd helper fix.
 
 - `packages/amneziawg-openwrt/kmod-amneziawg/Makefile`
-  - `PKG_RELEASE` bumped to `3`.
-  - `Build/Prepare` rewritten to use portable `cp` commands instead of shell brace expansion, which is brittle under `/bin/sh`.
-  - Fixed the actual CI build stopper: `Build/Prepare` no longer pre-copies `uapi/wireguard.h` before patching, so `000-initial-amneziawg.patch` can create the file cleanly.
-  - Added `patch -N` so repeated prepare runs stay idempotent instead of failing on already-applied hunks.
-
 - `packages/amneziawg-openwrt/kmod-amneziawg/files/000-initial-amneziawg.patch`
-  - Rebased to apply cleanly against the current FriendlyWrt RK3588 kernel branch used by `master-v24.10`.
-  - Dry-run checked against `friendlyarm/kernel-rockchip` branch `nanopi6-v6.1.y`, commit `c8ae7970abdc7d82af51f442ea29b307322a0199`.
-  - Real module compile also succeeded against that branch in a Linux container using `make ... M=/tmp/amneziawg-build modules`.
+  - Previous build fixes are retained: portable `Build/Prepare`, idempotent patch application, and a patch rebased for FriendlyARM `nanopi6-v6.1.y`.
 
-## Docker note
+## Root cause: kernel mismatch
 
-- `luci-lib-docker` is not present as a standalone package in the current pinned LuCI feed used by FriendlyWrt `24.10`.
-- Current `luci-app-dockerman` already pulls the active Docker UI stack for this branch, so the build keeps the current FriendlyWrt/OpenWrt 24.10 style instead of forcing an obsolete package.
+- The rootfs build stage compiles packages inside `project/friendlywrt`, which is the FriendlyWrt/OpenWrt tree for `rockchip/armv8`.
+- In that tree, `target/linux/rockchip/Makefile` uses `KERNEL_PATCHVER:=6.6`, so OpenWrt kernel packages are produced for `6.6.110`.
+- The final NanoPi R6S SD image does not boot that OpenWrt kernel. The image stage boots the separate FriendlyARM RK3588 vendor kernel from manifest `rk3588.xml`, branch `kernel-rockchip:nanopi6-v6.1.y`, which produces runtime `uname -r = 6.1.141`.
+- Because `kmod-amneziawg` was previously selected in the rootfs stage, it got installed into `/lib/modules/6.6.110/` inside the image, which can never satisfy runtime `modprobe` on a system booted with `6.1.141`.
 
-## How to trigger the build
+## Root cause: missing proto_amneziawg_check_installed
 
-- In GitHub Actions, run the `build` workflow manually with `workflow_dispatch`.
-- A push to `master` also triggers the same workflow.
+- `packages/amneziawg-openwrt/amneziawg-tools/files/amneziawg.sh` called `proto_amneziawg_check_installed` in `proto_amneziawg_teardown()`.
+- That function was not defined anywhere in the AmneziaWG helper and is not provided by the sourced netifd helpers here.
+- The helper was also internally inconsistent: setup removed `/var/run/wireguard/${config}.sock`, while teardown tried to remove `/var/run/amneziawg/${config}.sock`.
+- Result: `ifup`/reload paths could hit teardown first, explode on the undefined helper, and then fall through into the misleading “install kmod or amneziawg-go” message.
 
-## What to download and flash
+## Exact fixes made
 
-- Download the release asset:
-  - `NanoPi-R6S-FriendlyWrt-24.10-docker.img.gz`
-- Flash that `.img.gz` to an SD card.
-- The workflow also uploads the intermediate rootfs bundle:
-  - `rootfs-friendlywrt-24.10-docker.tgz`
-  - That rootfs archive is not the file to flash.
+- Rootfs-stage OpenWrt kernel module selection for AmneziaWG was removed.
+  - The next image will no longer embed the wrong `6.6.110` `kmod-amneziawg` package in the rootfs.
 
-## Release tag format
+- AmneziaWG kernel module building moved to the image stage.
+  - `scripts/3rd/add_amneziawg.sh` now compiles the module after the FriendlyARM RK3588 kernel is built.
+  - Local validation proved the script places `amneziawg.ko` into:
+    - `out/output_mock_kmodules/lib/modules/6.1.141/amneziawg.ko`
+  - The same validation also produced fresh:
+    - `modules.dep`
+    - `modules.alias`
+    - `modules.symbols`
+    - their `*.bin` companions
 
-- The workflow creates a release tag in the form:
-  - `FriendlyWrt-YYYY-MM-DD-RUN_NUMBER`
-- For example, if you trigger it on March 31, 2026 and GitHub assigns run number `7`, the tag will be:
-  - `FriendlyWrt-2026-03-31-7`
+- The netifd proto helper was fixed.
+  - Teardown no longer references `proto_amneziawg_check_installed`.
+  - Teardown now mirrors the upstream `wireguard.sh` pattern and simply removes the interface plus the correct socket path.
 
-## What was broken and how it was fixed
+- The rootfs stage is now aligned to the RK3588 device context.
+  - This keeps the NanoPi R6S build path consistent across rootfs and image stages instead of mixing `rk3399` rootfs metadata with `rk3588` image output.
 
-- `kmod-amneziawg` was not fully build-safe for this FriendlyWrt tree.
-- The rebased kernel patch already matched the `nanopi6-v6.1.y` WireGuard sources, but the package `Build/Prepare` recipe still copied `uapi/wireguard.h` before applying the patch.
-- That caused `patch` to stop when the patch tried to create `uapi/wireguard.h`.
-- The fix was to let the patch own that file creation, keep the portable copy logic for the other WireGuard sources, and make patch application idempotent with `-N`.
+## Why the next image should work on the real router
+
+- The image will stop carrying the wrong OpenWrt-side `kmod-amneziawg` built for `6.6.110`.
+- The image stage will inject `amneziawg.ko` for the actual NanoPi R6S runtime kernel release returned by `make kernelrelease` from the FriendlyARM RK3588 kernel tree.
+- Local validation confirmed that the new script stages the module under `lib/modules/6.1.141/`, which is the same form required by runtime `uname -r`.
+- The generated module index files mean `modprobe amneziawg` has the expected runtime metadata in the correct kernel directory.
+- The netifd proto helper no longer contains the undefined `proto_amneziawg_check_installed` call, so `ifup awg_nl` should not die on that missing function anymore.
 
 ## Verification done
 
-- `bash -n` passed for the changed shell scripts.
+- `bash -n` passed for:
+  - `scripts/add_packages.sh`
+  - `scripts/custome_config.sh`
+  - `scripts/custome_kernel_config.sh`
+  - `scripts/3rd/add_r8125.sh`
+  - `scripts/3rd/add_amneziawg.sh`
+
+- `sh -n` passed for:
+  - `packages/amneziawg-openwrt/amneziawg-tools/files/amneziawg.sh`
+
 - Workflow YAML parsed successfully.
-- The generated config fragments select:
-  - `docker`
-  - `kmod-r8125`
-  - `amneziawg-tools`
-  - `kmod-amneziawg`
-  - `luci-proto-amneziawg`
-- Upstream FriendlyWrt `master-v24.10` configs still select:
-  - `dockerd`
-  - `docker-compose`
-  - `luci-app-dockerman`
-  - `kmod-wireguard`
-- FriendlyWrt source defaults were rewritten to `192.168.8.1`.
-- Upstream device definition still points to `friendlyarm_nanopi-r6s` / `NanoPi R6S`.
-- The vendored `kmod-amneziawg` now compiles successfully against `friendlyarm/kernel-rockchip` branch `nanopi6-v6.1.y`.
+
+- Grep verification in the repo confirms:
+  - rootfs stage uses `rk3588.xml`
+  - rootfs stage uses `rk3588_docker.mk`
+  - image stage runs `add_amneziawg.sh`
+  - rootfs-stage config still selects:
+    - `docker`
+    - `amneziawg-tools`
+    - `luci-proto-amneziawg`
+  - rootfs-stage config no longer selects:
+    - `kmod-amneziawg`
+    - `kmod-r8125`
+  - `amneziawg.sh` no longer references:
+    - `proto_amneziawg_check_installed`
+    - `/var/run/amneziawg/...`
+
+- Linux-container validation of the new image-stage module script succeeded.
+  - The script built `amneziawg.ko` against FriendlyARM `nanopi6-v6.1.y`.
+  - The script staged the module into `lib/modules/6.1.141/`.
+  - The staged tree contains `modules.dep*`, `modules.alias*`, and `modules.symbols*`.
+
+## Still not fully hardware-verified here
+
+- I cannot boot the new SD image on your physical NanoPi R6S from inside this workspace.
+- The remaining real-device checks still need one fresh flash of the next image:
+  - `uname -r`
+  - `/lib/modules/$(uname -r)/amneziawg.ko`
+  - `modprobe amneziawg`
+  - `lsmod | grep amneziawg`
+  - `ifup awg_nl`
+  - `ifstatus awg_nl`
+
+## Trigger and artifact
+
+- Trigger the workflow from GitHub Actions using `build`.
+- Download and flash:
+  - `NanoPi-R6S-FriendlyWrt-24.10-docker.img.gz`

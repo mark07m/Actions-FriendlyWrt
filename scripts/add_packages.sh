@@ -47,10 +47,10 @@ rsync -a --delete "${AMNEZIA_VENDOR_DIR}/" "${AMNEZIA_PACKAGE_DIR}/"
 # }}
 
 # {{ Add config fragments for R6S extras.
+# Kernel modules tied to the FriendlyARM vendor kernel are injected during
+# the image stage, not the OpenWrt rootfs stage, to avoid 6.6-vs-6.1 mismatches.
 cat > "${ROCKCHIP_EXTRA_CONFIG}" <<'EOL'
-CONFIG_PACKAGE_kmod-r8125=y
 CONFIG_PACKAGE_amneziawg-tools=y
-CONFIG_PACKAGE_kmod-amneziawg=y
 CONFIG_PACKAGE_luci-proto-amneziawg=y
 EOL
 
