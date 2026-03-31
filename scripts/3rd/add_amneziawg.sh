@@ -20,6 +20,7 @@ modules_dir="${kmodules_root}/lib/modules/${kernel_ver}"
 }
 
 build_dir="${top_path}/amneziawg-build"
+overlay_dir="${top_path}/amneziawg-files/etc/modules.d"
 rm -rf "${build_dir}"
 mkdir -p "${build_dir}/selftest" "${build_dir}/uapi"
 
@@ -36,6 +37,12 @@ cp -f "${build_dir}/amneziawg.ko" "${modules_dir}/"
 
 if command -v depmod >/dev/null 2>&1; then
 	depmod -b "${kmodules_root}" "${kernel_ver}" || true
+fi
+
+mkdir -p "${overlay_dir}"
+echo "amneziawg" > "${overlay_dir}/30-amneziawg"
+if ! grep -q 'amneziawg-files' .current_config.mk 2>/dev/null; then
+	echo "FRIENDLYWRT_FILES+=(amneziawg-files)" >> .current_config.mk
 fi
 
 rm -rf "${build_dir}"

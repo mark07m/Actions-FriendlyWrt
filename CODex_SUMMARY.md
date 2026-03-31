@@ -38,6 +38,7 @@
   - Builds `amneziawg.ko` against the actual FriendlyARM RK3588 vendor kernel tree.
   - Installs the module into `out/output_*_kmodules/lib/modules/$(kernelrelease)/`.
   - Runs `depmod -b` on the staged module tree so runtime `modprobe amneziawg` can resolve it.
+  - Adds a FriendlyARM-style rootfs overlay entry at `/etc/modules.d/30-amneziawg` and appends `FRIENDLYWRT_FILES+=(amneziawg-files)` so the module follows the same image integration path as other external kernel modules.
   - Kept with a bash shebang and should also be committed with the executable bit set.
 
 - `scripts/3rd/add_r8125.sh`
@@ -63,6 +64,7 @@
 - The image stage now injects `amneziawg.ko` into `/lib/modules/$(real_vendor_kernel_release)/`, which matches the runtime kernel produced for NanoPi R6S.
 - Local validation confirmed the new script stages `amneziawg.ko` under `lib/modules/6.1.141/`, which matches the real device report.
 - The staged module tree also gets refreshed `modules.dep*`, `modules.alias*`, and `modules.symbols*`, so `modprobe amneziawg` has the right metadata.
+- The image now also carries `/etc/modules.d/30-amneziawg` through the standard FriendlyARM overlay path, so the runtime image sees `amneziawg` as part of the external-kmodule integration flow rather than only as a copied `.ko`.
 - The proto helper no longer references the undefined `proto_amneziawg_check_installed`, so `ifup awg_nl` should stop failing on that missing function.
 - `r8125.ko` is now delivered through the same runtime-kernel path, so the final image also keeps the required Realtek 2.5G kernel module aligned with the booted kernel.
 
@@ -91,6 +93,8 @@
   - rootfs stage uses `rk3588_docker.mk`
   - image stage runs `bash ../scripts/3rd/add_r8125.sh`
   - image stage runs `bash ../scripts/3rd/add_amneziawg.sh`
+  - `add_amneziawg.sh` appends `FRIENDLYWRT_FILES+=(amneziawg-files)`
+  - `add_amneziawg.sh` creates `/etc/modules.d/30-amneziawg`
   - rootfs-stage config selects:
     - `docker`
     - `amneziawg-tools`
