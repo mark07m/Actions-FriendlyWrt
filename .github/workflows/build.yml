@@ -275,8 +275,8 @@ jobs:
         ./build.sh kernel
         case ${{ matrix.CPU }} in
         rk3588)
-            ../scripts/3rd/add_r8125.sh
-            ../scripts/3rd/add_amneziawg.sh
+            bash ../scripts/3rd/add_r8125.sh
+            bash ../scripts/3rd/add_amneziawg.sh
             ;;
         esac
 

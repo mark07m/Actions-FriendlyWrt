@@ -22,9 +22,10 @@
   - Rootfs stage now initializes from `rk3588.xml` instead of `rk3399.xml`.
   - Rootfs stage now sources `device/friendlyelec/rk3588/rk3588_docker.mk` so the rootfs build matches the NanoPi R6S Docker image path.
   - RK3588 image stage now runs both:
-    - `scripts/3rd/add_r8125.sh`
-    - `scripts/3rd/add_amneziawg.sh`
+    - `bash scripts/3rd/add_r8125.sh`
+    - `bash scripts/3rd/add_amneziawg.sh`
   - That means both extra kernel modules are built after `./build.sh kernel`, against the real FriendlyARM vendor kernel used by the final SD image.
+  - This also fixes the GitHub Actions `Permission denied` failure path if a helper script loses its executable bit in the repo checkout.
 
 - `scripts/add_packages.sh`
   - Keeps `amneziawg-tools` and `luci-proto-amneziawg` selected in the FriendlyWrt rootfs package set.
@@ -37,6 +38,7 @@
   - Builds `amneziawg.ko` against the actual FriendlyARM RK3588 vendor kernel tree.
   - Installs the module into `out/output_*_kmodules/lib/modules/$(kernelrelease)/`.
   - Runs `depmod -b` on the staged module tree so runtime `modprobe amneziawg` can resolve it.
+  - Kept with a bash shebang and should also be committed with the executable bit set.
 
 - `scripts/3rd/add_r8125.sh`
   - Activated for RK3588 image builds instead of being left as a commented example.
@@ -87,8 +89,8 @@
 - Grep verification confirms:
   - rootfs stage uses `rk3588.xml`
   - rootfs stage uses `rk3588_docker.mk`
-  - image stage runs `add_r8125.sh`
-  - image stage runs `add_amneziawg.sh`
+  - image stage runs `bash ../scripts/3rd/add_r8125.sh`
+  - image stage runs `bash ../scripts/3rd/add_amneziawg.sh`
   - rootfs-stage config selects:
     - `docker`
     - `amneziawg-tools`
