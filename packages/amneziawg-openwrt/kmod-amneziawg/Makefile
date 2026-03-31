@@ -4,7 +4,7 @@ include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=kmod-amneziawg
 PKG_VERSION:=0.0.1
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -29,9 +29,8 @@ define Build/Prepare
 	cp -fp $(LINUX_DIR)/drivers/net/wireguard/*.h $(PKG_BUILD_DIR)/
 	cp -a $(LINUX_DIR)/drivers/net/wireguard/selftest/. $(PKG_BUILD_DIR)/selftest/
 	mkdir -p $(PKG_BUILD_DIR)/uapi
-	cp -f $(LINUX_DIR)/include/uapi/linux/wireguard.h $(PKG_BUILD_DIR)/uapi/
 	for patch in files/*.patch; do \
-		patch -d $(PKG_BUILD_DIR)/ -F3 -t -p0 -i "$$$$(pwd)/$$$${patch}"; \
+		patch -d $(PKG_BUILD_DIR)/ -F3 -N -t -p0 -i "$$$$(pwd)/$$$${patch}"; \
 	done
 	cp -f src/Makefile $(PKG_BUILD_DIR)
 endef
